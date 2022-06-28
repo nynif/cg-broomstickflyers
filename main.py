@@ -2,8 +2,6 @@ import sys
 import math
 import random
 
-# Grab Snaffles and try to throw them through the opponent's goal!
-# Move towards a Snaffle and use your team id to determine where you need to throw it.
 class Entitie:
     def __init__(self, entity_id, entity_type, x, y, vx, vy, state):
         self.entity_id = entity_id
@@ -14,19 +12,21 @@ class Entitie:
         self.vy = vy
         self.state = state
         self.dir = math.atan2(vy,vx) * 180 / math.pi
-#Dans le cas ou je marque à droite
-#L'opp est derrière moi si abs(angle) > 90 
-#L'opp est devant moi si abs(angle) < 90 
+        
+        if entity_id == "SNAFFLE":
+            self.masse = 0.5 
+            self.friction = 0.75
+        elif entity_id == "BLUDGER":
+            self.masse = 8
+            self.friction = 0.9
+        else:      #WIZARD
+            self.masse = 1
+            self.friction = 0.75
 
-masse_snaffle = 0.5
-friction_snaffle = 0.75
 
 my_team_id = int(input())  # if 0 you need to score on the right of the map, if 1 you need to score on the left
-op_x_goal = 0
-my_x_goal = 16000
-if my_team_id == 1:
-    op_x_goal = 16000
-    my_x_goal = 0
+op_x_goal = 0 if my_team_id == 0 else 16000
+my_x_goal = 0 if my_team_id == 1 else 16000
 
 dist_max = 25000
 #Distance à partir de laquelle on va tirer sur les bludgers
@@ -44,6 +44,7 @@ def direction_between_entities(entity_a: Entitie, entity_b: Entitie):
 def norme(vx, vy):
     return math.sqrt(vx*vx+vy*vy)
 
+#Get the affine definition of the line between 2 entities
 def get_affine(entity_a: Entitie, entity_b: Entitie):
     a = 0
     if entity_b.x != entity_a.x :
@@ -52,10 +53,10 @@ def get_affine(entity_a: Entitie, entity_b: Entitie):
     b = entity_a.y - a*entity_a.x
     return a,b
 
-def affine_get_y_from_x(a,b,x):
+def affine_get_y_from_x(a, b, x):
     return a*x+b
 
-def affine_get_x_from_y(a,b,y):
+def affine_get_x_from_y(a, b, y):
     if a != 0:
         return (y-b)/a
     else:
@@ -70,22 +71,23 @@ def is_a_before_b(entity_a: Entitie, entity_b: Entitie):
 def y_impact_is_in_goal(y_impact):
     return y_impact > 1950 and y_impact < 5950
 
-def will_goal(entity_a: Entitie, entity_b: Entitie, accio= False):
+# If a shoot b with flipendo, will it goal ?
+def flipendo_will_goal(entity_a: Entitie, entity_b: Entitie, accio= False):
     a,b = get_affine(entity_a, entity_b)
     y_impact = affine_get_y_from_x(a,b, my_x_goal)
 
     return y_impact_is_in_goal(y_impact) and is_a_before_b(entity_a, entity_b) 
 
-def accio_goal(entity_a: Entitie, entity_b: Entitie):
+# If a attract b with accio, will it goal ?
+def accio_will_goal(entity_a: Entitie, entity_b: Entitie):
     a, b = get_affine(entity_a, entity_b)
     y_impact = affine_get_y_from_x(a,b, my_x_goal)
-
     if y_impact_is_in_goal(y_impact) and is_a_before_b(entity_a, entity_b) == False:
         return True
-
     return False
 
-def new_vect(wizard: Entitie, snaffle: Entitie):
+# Calcul the next position and vitesse of a snaffle during ACCIO attraction
+def accio_new_position(wizard: Entitie, snaffle: Entitie):
     previous_norme   = norme(snaffle.vx, snaffle.vy)
     # print(snaffle.vx, snaffle.vy, previous_norme)
 
@@ -97,31 +99,35 @@ def new_vect(wizard: Entitie, snaffle: Entitie):
     vy_add_norm = (wizard.y-snaffle.y)/dist_ab
     
     new_snaffle = snaffle 
-    new_snaffle.vx = round((snaffle.vx + vx_add_norm*pousse/masse_snaffle)*friction_snaffle)
-    new_snaffle.vy = round((snaffle.vy + vy_add_norm*pousse/masse_snaffle)*friction_snaffle)
+    new_snaffle.vx = round((snaffle.vx + vx_add_norm*pousse/snaffle.masse)*snaffle.friction)
+    new_snaffle.vy = round((snaffle.vy + vy_add_norm*pousse/snaffle.masse)*snaffle.friction)
     new_snaffle.x = round(snaffle.x+  new_snaffle.vx)
     new_snaffle.y = round(snaffle.y+new_snaffle.vy)
 
     return new_snaffle
 
+# If I use accio, will my magic will attract the snaffle to me 
 def will_catch_with_accio(wizard: Entitie, snaffle: Entitie):
-
     will_catch_with_accio = False
     init_snaffle = snaffle
     for i in range(6):
-        snaffle=  new_vect(wizard, snaffle)
+        snaffle=  accio_new_position(wizard, snaffle)
         if will_catch_with_accio == False and distance_between_entities(wizard, snaffle) < 1600:
             will_catch_with_accio = True
     
+    #This one if just for log
     if will_catch_with_accio == False:
         for i in range(6):
-            init_snaffle=  new_vect(wizard, snaffle)
+            init_snaffle=  accio_new_position(wizard, snaffle)
             print("loop", init_snaffle.vx, init_snaffle.vy, distance_between_entities(wizard, init_snaffle), file=sys.stderr, flush=True)
-
 
     return will_catch_with_accio
 
 
+
+####################################   MAGIC FUNCTION DEFINITON
+
+# OBLIVIATE magic to avoid Blugers 
 def MAGIC_OBLIVIATE(my_wizard, p_bludgers, my_magic):
     tmp_action = ""
     for i_bludger, act_bludger in enumerate(p_bludgers):
@@ -131,7 +137,8 @@ def MAGIC_OBLIVIATE(my_wizard, p_bludgers, my_magic):
                 my_magic -= 5 
     return tmp_action, my_magic
 
-def MAGIC_ACCIO(p_snaffles, p_snaffles_already_target, my_magic):
+# Accio magic in defense use, if the ennemy is about to goal
+def MAGIC_ACCIO_DEFENSE(p_snaffles, p_snaffles_already_target, my_magic):
     tmp_action = ""
     for i, snaffle in enumerate(p_snaffles):
         if (snaffle.entity_id not in p_snaffles_already_target) and distance_between_entities(actual_wizard, snaffle) > 6000 and my_magic > 15:
@@ -139,17 +146,18 @@ def MAGIC_ACCIO(p_snaffles, p_snaffles_already_target, my_magic):
             my_magic -= 15
     return tmp_action, my_magic
 
-#TODO: regler correctement la distance afin que la balle ne soit pas capturer par le soricer, sinon la vitesse est réduite
-def MAGIC_ACCIO_PERFECT(my_wizard, p_snaffles, my_magic):    
+# Accio magic in attack use, if we can goal with the ball
+def MAGIC_ACCIO_ATTACK(my_wizard, p_snaffles, my_magic):    
     tmp_action = ""
     for i, snaffle in enumerate(p_snaffles):
         dist =  distance_between_entities(my_wizard, snaffle) 
-        if dist > 2500 and dist < 6500 and accio_goal(my_wizard, snaffle):
+        if dist > 2500 and dist < 6500 and accio_will_goal(my_wizard, snaffle):
             if will_catch_with_accio(my_wizard, snaffle) == False and my_magic > 15:
                 tmp_action = "ACCIO " + str(snaffle.entity_id) + " ACCIOPERFECT"
                 my_magic -= 15
     return tmp_action, my_magic
 
+# Petrificus magic, defense use to stop ball before ennemy goal
 def MAGIC_PETRIFICUS(my_wizard, p_snaffles, my_magic):
     tmp_action = ""
     for i, snaffle in enumerate(p_snaffles):
@@ -161,16 +169,17 @@ def MAGIC_PETRIFICUS(my_wizard, p_snaffles, my_magic):
 
     return tmp_action, my_magic
 
-
-def MAGIC_FLIPENDO_PERFECT(my_wizard, p_snaffles, my_magic):
+# Flipendo magic in attack use, if we can goal with the ball
+def MAGIC_FLIPENDO_ATTACK(my_wizard, p_snaffles, my_magic):
     tmp_action = ""
     for i, snaffle in enumerate(p_snaffles):
-        if will_goal(my_wizard, snaffle) and distance_between_entities(my_wizard, snaffle) < 6000 and my_magic > 20:
+        if flipendo_will_goal(my_wizard, snaffle) and distance_between_entities(my_wizard, snaffle) < 6000 and my_magic > 20:
             tmp_action = "FLIPENDO " + str(snaffle.entity_id) + " FLIPENDOPERFECT"
             my_magic -= 20
     return tmp_action, my_magic
 
-#TODO: ne pas utiliser de magie sur une balles qui est déjà target 
+
+#################################### MOVE FUNCTION
 
 def ACTION_MOVE_ATT(my_wizard, p_snaffles, p_snaffles_already_target, total_score):
     tmp_action = ""
@@ -221,6 +230,7 @@ def ACTION_THROW():
     return tmp_action
 
 
+#################################### GAME LOOP
 # game loop
 while True:
     my_score, my_magic = [int(i) for i in input().split()]
@@ -254,14 +264,14 @@ while True:
         if True: #i_wiz % 2 == 0:
 
             if action == "":
-                action, my_magic = MAGIC_FLIPENDO_PERFECT(actual_wizard, snaffles, my_magic)
+                action, my_magic = MAGIC_FLIPENDO_ATTACK(actual_wizard, snaffles, my_magic)
 
            # if action == "":
            #     action, my_magic = MAGIC_PETRIFICUS(actual_wizard, snaffles, my_magic)
             
 
             if action == "":
-                action, my_magic = MAGIC_ACCIO_PERFECT(actual_wizard, snaffles, my_magic)          
+                action, my_magic = MAGIC_ACCIO_ATTACK(actual_wizard, snaffles, my_magic)          
 
             if action == "":
                 # if wizard is NOT holding a Snaffle, Move to the targeted snaffle
@@ -277,7 +287,7 @@ while True:
         else:
 
             if action == "":
-                action, my_magic = MAGIC_FLIPENDO_PERFECT(actual_wizard, snaffles, my_magic)
+                action, my_magic = MAGIC_FLIPENDO_ATTACK(actual_wizard, snaffles, my_magic)
 
             if action == "":
                 action, my_magic = MAGIC_PETRIFICUS(actual_wizard, snaffles, my_magic)
